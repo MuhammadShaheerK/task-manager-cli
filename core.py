@@ -1,215 +1,94 @@
-from datetime import datetime
+"""Task operations shared by the CLI and API."""
+from datetime import date
+import os
+from threading import RLock
+from storage import Storage
 
-
-
-
-
-class TaskManager:
-    """
-    Manages tasks, persistence, and daily state.
-    """
-
-    def __init__(self,filename = "tasks.txt"):
-        self.tasks = []
-        self.status = []
-        self.taskfile = filename
-        self.read_tasks()
-        if self.tasks == []:
-            self.reset_tasks_to_default()
-        self.last_log_date = self.read_last_log_date()
-
-    def reset_tasks_to_default(self):
-        """Renews the tasks list."""
-        self.tasks = ["gym", "work", "study"]
-        self.status = [False, False, False]
-        with open(self.taskfile, "w") as file:
-            for task in self.tasks:
-                file.write(f"{task},False\n")
-
-    def read_last_log_date(self):
-        """ Reads the last log date from the last_log file"""
-        try:
-            with open("last_log.txt", "r") as file:
-                file_content = file.read()
-                return file_content.split("\n")[0]
-        except FileNotFoundError:
-            today = datetime.today().strftime("%Y-%m-%d")
-            with open("last_log.txt", "w") as file:
-                file.write(today)
-                return today
-
-
-    def read_tasks(self):
-        """Reads the tasks from the tasks file"""
-        self.tasks = []
-        self.status = []
-        try:
-            with open(self.taskfile, "r") as file:
-                lines = file.readlines()
-        except FileNotFoundError:
-            return
-
-        for line in lines:
-            line = line.strip()  # remove \n and spaces
-            if not line:
-                continue  # skip empty lines
-
-            parts = line.split(",")
-            if len(parts) != 2:
-                continue  # invalid format
-
-            task_name, task_status = parts
-            task_status = task_status.strip().lower()
-            self.tasks.append(task_name)
-
-            if task_status == "true":
-
-                self.status.append(True)
-            elif task_status == "false":
-
-                self.status.append(False)
-            else:
-                continue  # invalid status
-
-
-    def log_history(self):
-        """ logs the history to the log file"""
-
-        date = datetime.now().strftime("%Y-%m-%d")
-
-        with open("log.txt", "a") as file:
-            file.write(f"===== {self.last_log_date} =====\n")
-            for t,st in zip(self.tasks,self.status):
-                file.write(f"Task:{t}, Status:{st}\n")
-            file.write("\n")
-
-        with open("last_log.txt", "w") as file:
-            file.write(f"{date}\n")
-        self.last_log_date = date
-
-    def write_tasks_to_file(self):
-        """Writes the tasks to the tasks file"""
-        with open(self.taskfile, "w") as file:
-            for t,st in zip(self.tasks,self.status):
-                file.write(f"{t},{st}\n")
-
-    def run(self):
-        """run every day to log the tasks and to renew the tasks"""
-        if self.last_log_date  != datetime.now().strftime("%Y-%m-%d"):
-            self.log_history()
-            self.reset_tasks_to_default()
-
-
-    def cal_progress(self):
-        """calculates the progress of the day."""
-        completed = sum(self.status)
-        total = len(self.tasks)
-        return completed, total
-
-
-    def update_tasks(self,task_num):
-        """updates the tasks list"""
-
-
-
-        if task_num > len(self.tasks) or task_num <= 0:
-            raise TaskNotFoundError()
-        if self.status[task_num - 1]:
-
-            raise TaskDoneAlreadyError()
-        self.status[task_num - 1] = True
-        self.update_file(task_num)
-        return {
-            "id" : task_num,
-            "name": self.tasks[task_num - 1],
-            "status": True
-        }
-
-
-    def update_file(self,task_num):
-        """updates the tasks list"""
-        try:
-            with open(self.taskfile, "r") as file:
-                lines = file.readlines()
-        except FileNotFoundError:
-            return
-        if 0 < task_num <= len(lines):
-            task, _ = lines[task_num - 1].strip().split(",")
-            lines[task_num - 1] = f"{task.strip()},True\n"
-        with open(self.taskfile, "w") as file:
-            file.writelines(lines)
-
-    def sort_tasks(self):
-        """sorts the tasks list on adding a task."""
-        if not self.tasks:
-            return
-        combined = sorted(
-            zip(self.tasks, self.status),
-            key=lambda pair: pair[0].lower()
-        )
-        self.tasks,self.status = map(list,zip(*combined))
-    def get_task(self, task_num):
-        if task_num > len(self.tasks) or task_num <= 0:
-            raise TaskNotFoundError()
-        return {
-            "id" : task_num,
-            "name": self.tasks[task_num - 1],
-            "status": self.status[task_num - 1]
-        }
-
-    def add_task(self,task_name):
-        """adds a task to the tasks list and to the file"""
-        for task in self.tasks:
-            if task_name == task:
-                raise TaskAlreadyExists()
-        self.tasks.append(task_name)
-        self.status.append(False)
-        self.sort_tasks()
-        self.write_tasks_to_file()
-        index = self.tasks.index(task_name) +1
-        return{
-            "id" : index,
-            "name": task_name,
-            "status": False
-        }
-
-    def remove_task(self, task_num):
-        if task_num <= 0 or task_num > len(self.tasks):
-            raise TaskNotFoundError()
-
-        removed = {
-            "id": task_num,
-            "name": self.tasks.pop(task_num - 1),
-            "status": self.status.pop(task_num - 1)
-        }
-
-        self.write_tasks_to_file()
-        return removed
-
-    def print_task_manager(self):
-        """not is use for now. Prints the tasks with their status."""
-        print("\nTask Manager")
-        task_with_status = [f"{t}:{st}" for t, st in zip(self.tasks, self.status)]
-        print("Today's tasks:", ", ".join(task_with_status))
-
-
-    def print_tasks(self):
-        """prints the tasks"""
-        print("Today's tasks")
-        for i, task in enumerate(self.tasks, 1):
-            print(f"{i}: {task}")
-
-
-
-    def print_progress(self):
-        """prints the progress of the day."""
-        print("\nTask Progress")
-
-        print("Today's progress:", self.cal_progress())
 
 class TaskNotFoundError(Exception):
     pass
+
+
 class TaskDoneAlreadyError(Exception):
     pass
+
+
 class TaskAlreadyExists(Exception):
     pass
+
+
+class InvalidTaskName(ValueError):
+    pass
+
+
+class TaskManager:
+    def __init__(self, filename=None, today=None):
+        self.storage = Storage(filename or os.environ.get("TASK_MANAGER_FILE", "tasks.txt"))
+        self.taskfile = str(self.storage.path)
+        self._today = today or date.today
+        self.lock = RLock()
+        existing = self.storage.load_tasks()
+        if existing is None:
+            self.tasks, self.status = ["gym", "work", "study"], [False] * 3
+            self.write_tasks_to_file()
+        else:
+            self.tasks, self.status = existing
+        self.last_log_date = self.storage.read_date()
+        if not self.last_log_date:
+            self.last_log_date = self._today().isoformat()
+            self.storage.save_date(self.last_log_date)
+
+    def write_tasks_to_file(self):
+        self.storage.save_tasks(self.tasks, self.status)
+
+    def reset_tasks_to_default(self):
+        self.tasks, self.status = ["gym", "work", "study"], [False] * 3
+        self.write_tasks_to_file()
+
+    def run(self):
+        with self.lock:
+            today = self._today().isoformat()
+            if self.last_log_date != today:
+                self.storage.log_history(self.last_log_date, self.tasks, self.status)
+                self.reset_tasks_to_default()
+                self.storage.save_date(today)
+                self.last_log_date = today
+
+    def _index(self, number):
+        if number <= 0 or number > len(self.tasks):
+            raise TaskNotFoundError()
+        return number - 1
+
+    def get_task(self, task_num):
+        i = self._index(task_num)
+        return {"id": task_num, "name": self.tasks[i], "status": self.status[i]}
+
+    def add_task(self, task_name):
+        name = task_name.strip()
+        if not name or "\n" in name or "\r" in name:
+            raise InvalidTaskName("Use a non-empty, single-line task name")
+        if any(name.casefold() == old.casefold() for old in self.tasks):
+            raise TaskAlreadyExists()
+        self.tasks.append(name)
+        self.status.append(False)
+        self.write_tasks_to_file()
+        return self.get_task(len(self.tasks))
+
+    def update_tasks(self, task_num):
+        i = self._index(task_num)
+        if self.status[i]:
+            raise TaskDoneAlreadyError()
+        self.status[i] = True
+        self.write_tasks_to_file()
+        return self.get_task(task_num)
+
+    def remove_task(self, task_num):
+        removed = self.get_task(task_num)
+        i = self._index(task_num)
+        self.tasks.pop(i)
+        self.status.pop(i)
+        self.write_tasks_to_file()
+        return removed
+
+    def cal_progress(self):
+        return sum(self.status), len(self.tasks)

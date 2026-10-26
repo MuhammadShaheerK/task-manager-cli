@@ -1,318 +1,80 @@
-\# Task Manager (CLI + FastAPI)
+# Task Manager: CLI + FastAPI
 
+A local daily task manager with a shared service layer, CSV persistence, a command-line interface, and a REST API.
 
+## Setup
 
-A simple yet well-structured task manager application built with Python, following clean separation of concerns.
+Python 3.12, from the repository root:
 
-The project supports both a Command Line Interface (CLI) and a REST API using FastAPI, with persistent file-based storage.
-
-
-
-This project is designed as a learning-focused backend foundation, following patterns used in real-world backend applications.
-
-
-
----
-
-
-
-\## Features
-
-
-
-\### Core Functionality
-
-\- Add tasks
-
-\- Remove tasks
-
-\- Mark tasks as completed
-
-\- View daily task progress
-
-\- Retrieve individual tasks
-
-\- Automatic daily task reset with history logging
-
-
-
-\### Interfaces
-
-\- ✅ Command Line Interface (CLI)
-
-\- ✅ REST API (FastAPI)
-
-
-
-\### Persistence
-
-\- File-based task storage (`tasks.txt`)
-
-\- Daily history logs (`log.txt`, `last\_log.txt`)
-
-
-
----
-
-
-
-\## Tech Stack
-
-\- Python 3
-
-\- FastAPI
-
-\- Pydantic
-
-\- Uvicorn
-
-\- Pytest (for testing)
-
-
-
----
-
-
-
-\## Project Structure
-
-
-
-.
-
-├── api.py # FastAPI routes (HTTP layer only)
-
-├── cli.py # Command-line interface
-
-├── core.py # Core business logic (TaskManager)
-
-├── storage.py # File persistence logic
-
-├── services/
-
-│ └── task\_services.py # Service layer shared by CLI \& API
-
-├── tests/
-
-│ └── test\_core.py # Unit tests for core logic
-
-├── requirements.txt # Project dependencies
-
-├── README.md
-
-
-
-
-
----
-
-
-
-\## Architecture Overview
-
-
-
-\### `core.py`
-
-Contains all domain rules and business logic.
-
-This is the \*\*single source of truth\*\* and is fully unit-tested.
-
-
-
-\### `services/`
-
-Acts as a service layer that adapts core logic for different interfaces (CLI \& API).
-
-No direct file or HTTP handling here.
-
-
-
-\### `api.py`
-
-Pure HTTP layer:
-
-\- Request parsing
-
-\- Response formatting
-
-\- Error translation to HTTP status codes
-
-
-
-\### `cli.py`
-
-CLI adapter using the same service layer as the API.
-
-
-
----
-
-
-
-\## Running the Project
-
-
-
-\### 1. Create Virtual Environment
-
+~~~bash
 python -m venv .venv
-
-source .venv/bin/activate # Linux / Mac
-
-.venv\\Scripts\\activate # Windows
-
-
-
-
-
-\### 2. Install Dependencies
-
-pip install -r requirements.txt
-
-
-
-
-
-\### 3. Run FastAPI Server
-
-uvicorn api:app --reload
-
-
-
-
-
-Open in browser:
-
-http://127.0.0.1:8000/docs
-
-
-
-
-
----
-
-
-
-\## API Endpoints (Summary)
-
-
-
-| Method | Endpoint             | Description                  |
-
-|------|----------------------|------------------------------|
-
-| GET  | /tasks               | List all tasks               |
-
-| POST | /tasks               | Add a new task               |
-
-| GET  | /tasks/{id}          | Get a single task            |
-
-| DELETE | /tasks/{id}        | Delete a task                |
-
-| PUT  | /tasks/{id}/done     | Mark task as completed       |
-
-| GET  | /progress            | Daily task progress          |
-
-
-
----
-
-
-
-\## Testing
-
-
-
-\- Unit tests implemented using \*\*pytest\*\*
-
-\- Core business logic is fully tested
-
-\- Tests are isolated and do not affect real data files
-
-
-
-Run tests:
-
-pytest
-
-
-
-
-
----
-
-
-
-\## Error Handling
-
-
-
-Custom domain exceptions:
-
-\- `TaskNotFoundError`
-
-\- `TaskAlreadyExists`
-
-\- `TaskDoneAlreadyError`
-
-
-
-Errors are safely converted to proper HTTP responses in the API layer.
-
-
-
----
-
-
-
-\## Git \& Persistence Notes
-
-
-
-\- Runtime data files are ignored by Git:
-
-&nbsp; - `tasks.txt`
-
-&nbsp; - `log.txt`
-
-&nbsp; - `last\_log.txt`
-
-\- Only source code, configuration, and tests are version-controlled
-
-
-
----
-
-
-
-\## Future Improvements
-
-\- API endpoint tests
-
-\- Improved API validation
-
-\- Authentication
-
-\- Replace file storage with a database
-
-\- Dockerization
-
-
-
----
-
-
-
-\## Learning Goals of This Project
-
-\- Clean separation of concerns
-
-\- Service-layer architecture
-
-\- Unit testing with pytest
-
-\- API design with FastAPI
-
-\- Writing production-ready backend code
-
+# Windows PowerShell:
+.venv\Scripts\Activate.ps1
+# macOS/Linux, instead:
+# source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m pytest -q
+~~~
+
+## Command-line use
+
+~~~bash
+python main.py list
+python main.py add "Read, write, and review"
+python main.py done 1
+python main.py progress
+python main.py remove 2
+python main.py reset
+~~~
+
+Every command prints JSON. Invalid input exits with a readable error and a nonzero status. The tasks command is an alias for list.
+
+For another data location:
+
+~~~bash
+python main.py --file data/tasks.txt list
+~~~
+
+The --file option goes before the command. TASK_MANAGER_FILE is also supported; the command-line option takes precedence.
+
+## API
+
+~~~bash
+python -m uvicorn api:app --reload
+~~~
+
+Open http://127.0.0.1:8000/docs for interactive documentation.
+
+| Method | Route | Behavior |
+|---|---|---|
+| GET | /tasks | List tasks and current positional IDs |
+| POST | /tasks | Add a task; JSON body: {"name": "Read"} |
+| GET | /tasks/{id} | Retrieve a task |
+| PUT | /tasks/{id}/done | Mark it completed |
+| DELETE | /tasks/{id} | Remove it |
+| GET | /progress | Completed count, total, and percent |
+
+The API initializes storage on startup, not module import. It checks the day before each service operation, including while the server stays running overnight.
+
+## Storage and behavior
+
+- First use creates gym, work, and study. Removing every task preserves an empty list on restart that same day.
+- tasks.txt is CSV despite its extension. CSV quoting preserves commas and quotes in names; existing valid two-column task files remain readable.
+- Empty/whitespace-only or multi-line names are rejected; duplicate names are checked case-insensitively.
+- Tasks remain in insertion order. IDs are 1-based list positions, not permanent identifiers. Deleting a task changes later IDs; refresh the list before the next action.
+- On the first operation on a new local calendar day, the previous state is appended to log.txt and the list resets to the default three tasks. The reset command performs the same default reset immediately.
+- log.txt and last_log.txt live beside the chosen task file. Use separate directories for independent task stores.
+- Writes use temporary files followed by atomic replacement. Malformed rows raise an error instead of silently truncating the task/status lists.
+
+## Structure
+
+- core.py: task rules and daily rollover.
+- storage.py: CSV loading, atomic replacement, and history files.
+- services/task_services.py: shared synchronized operations.
+- cli.py / main.py: CLI parser and entry point.
+- api.py: app factory, validation, and HTTP error handling.
+- tests/: persistence, validation, day rollover, API CRUD/errors, CLI output, and import-side-effect checks.
+
+## Scope
+
+This is a local, single-process learning application. API operations share an in-process lock; multiple server workers or simultaneous CLI/API processes writing the same files are not supported. It has no authentication and should stay bound to localhost. Atomic individual file writes do not make day rollover across three files a crash-safe transaction. A database would be the next step for those requirements.

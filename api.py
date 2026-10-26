@@ -1,120 +1,90 @@
-from typing import List
-from fastapi import HTTPException
-from core import TaskNotFoundError, TaskDoneAlreadyError, TaskAlreadyExists
-from fastapi import FastAPI
-from pydantic import BaseModel
+"""Local single-process API. Importing this module does not create data files."""
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+from core import TaskManager, TaskNotFoundError, TaskDoneAlreadyError, TaskAlreadyExists, InvalidTaskName
 from services.task_services import TaskServices
-from core import TaskManager
-
-app = FastAPI()
-
-task_manager = TaskManager()
-task_manager.run()
-task_service = TaskServices(task_manager)
 
 
-#using pydantic
 class TaskCreate(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=500)
+
 
 class TaskResponse(BaseModel):
-    name: str
     id: int
+    name: str
     status: bool
 
+
 class TaskListResponse(BaseModel):
-    tasks: List[TaskResponse]
+    tasks: list[TaskResponse]
 
-class TaskCreated(BaseModel):
-    message:str
-    task:TaskResponse
 
-class TaskUpdated(BaseModel):
-    message:str
-    task:TaskResponse
+class TaskMutation(BaseModel):
+    message: str
+    task: TaskResponse
+
 
 class TaskDeleted(BaseModel):
     message: str
-    name : str
+    name: str
+
 
 class Progress(BaseModel):
     completed: int
     total: int
     percent: float
 
-@app.get("/")
-def root():
-    return {"message": "API is running!"}
+
+def create_app(filename=None, today=None):
+    @asynccontextmanager
+    async def lifespan(app):
+        app.state.service = TaskServices(TaskManager(filename, today))
+        yield
+
+    app = FastAPI(title="Task Manager", lifespan=lifespan)
+
+    def call(operation, *args):
+        try:
+            return getattr(app.state.service, operation)(*args)
+        except TaskNotFoundError:
+            raise HTTPException(status_code=404, detail="Task not found") from None
+        except TaskDoneAlreadyError:
+            raise HTTPException(status_code=400, detail="Task already completed") from None
+        except TaskAlreadyExists:
+            raise HTTPException(status_code=400, detail="Task already exists") from None
+        except InvalidTaskName as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.get("/")
+    def root():
+        return {"message": "API is running!"}
+
+    @app.get("/tasks", response_model=TaskListResponse)
+    def list_tasks():
+        return {"tasks": call("list_tasks")}
+
+    @app.post("/tasks", response_model=TaskMutation, status_code=201)
+    def add_task(task: TaskCreate):
+        return {"message": "Task added successfully", "task": call("add_task", task.name)}
+
+    @app.get("/tasks/{id}", response_model=TaskResponse)
+    def get_task(id: int):
+        return call("get_task", id)
+
+    @app.put("/tasks/{id}/done", response_model=TaskMutation)
+    def mark_task_done(id: int):
+        return {"message": "Task completed", "task": call("mark_done", id)}
+
+    @app.delete("/tasks/{id}", response_model=TaskDeleted)
+    def delete_task(id: int):
+        return {"message": "Task removed", "name": call("remove_task", id)["name"]}
+
+    @app.get("/progress", response_model=Progress)
+    def get_progress():
+        return call("get_progress")
+
+    return app
 
 
-@app.get("/tasks", response_model=TaskListResponse)
-def list_tasks():
-    return {
-        "tasks": task_service.list_tasks()
-    }
-
-@app.post("/tasks", response_model=TaskCreated, status_code=201)
-def add_task(task: TaskCreate):
-    try:
-        task = task_service.add_task(task.name)
-        return {
-            "message" : "Task added successfully!",
-            "task" : {
-                "id" : task["id"],
-                "name" : task["name"],
-                "status" : False
-            }
-        }
-    except TaskAlreadyExists:
-        raise HTTPException(status_code=400, detail="Task already exists!")
-
-@app.delete("/tasks/{id}", response_model = TaskDeleted,status_code=200)
-def delete_task(id: int):
-
-    try:
-        task = task_service.remove_task(id)
-        return{
-            "message" : "Task removed successfully!",
-            "name" : task["name"]
-        }
-    except TaskNotFoundError:
-        raise HTTPException(status_code=404, detail="Task not found")
-
-
-@app.put("/tasks/{id}/done", response_model = TaskUpdated,status_code=200)
-def mark_task_done(id: int):
-    try:
-        task = task_service.mark_done(id)
-        return{
-            "message" : "Task marked successfully!",
-            "task" : {
-                "id" : id,
-                "name" : task["name"],
-                "status" : True
-            }
-        }
-    except TaskNotFoundError:
-        raise HTTPException(status_code=404, detail="Task not found")
-    except TaskDoneAlreadyError:
-        raise HTTPException(status_code=400, detail="Task already done")
-
-@app.get("/tasks/{id}", response_model=TaskResponse)
-def get_task(id: int):
-    try:
-        task = task_service.get_task(id)
-        return{
-
-                "id" : id,
-                "name" : task["name"],
-                "status": task["status"]
-        }
-
-    except TaskNotFoundError:
-        raise HTTPException(status_code=404, detail="Task not found")
-
-
-@app.get("/progress", response_model = Progress)
-def get_progress():
-    return task_service.get_progress()
-
-
+app = create_app()

@@ -15,3 +15,6 @@ last_log.txt
 
 # OS files
 .DS_Store
+
+.pytest_cache/
+.vscode/
